@@ -1,0 +1,3 @@
+```json
+{"title":"Q3 Planning","date":"2026-06-24","attendees":["alice","bob"],"decisions":["adopt feature X"],"action_items":[{"owner":"alice","task":"draft spec","due_date":"2026-07-01"}]}
+```
