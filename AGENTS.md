@@ -27,10 +27,10 @@
 
 ## 3. 仓库结构与隔离规则
 
-所有概念放在 `concepts/<concept-name>/` 下：
+所有概念放在 `practices/<concept-name>/` 下：
 
 ```text
-concepts/<concept-name>/
+practices/<concept-name>/
 ├── Cargo.toml
 ├── Cargo.lock
 ├── rust-toolchain.toml
@@ -68,7 +68,7 @@ concepts/<concept-name>/
 - 可以使用 `tokio`、`reqwest`、`serde`、`serde_json`、`axum`、`tracing`、数据库驱动、协议库和测试库等通用 crate。
 - 不得使用 Rig、LangChain、LangGraph、AutoGen、ADK 等现成 Agent 框架实现核心流程。
 - 可以使用协议级基础库，但必须在 README 中说明哪些行为由本项目实现、哪些由依赖提供。
-- 模型接入必须通过项目内部定义的最小接口完成，不绑定单一模型厂商。
+- 模型接入必须通过项目内部定义的最小接口（如 `ModelClient` trait）完成。本仓库默认接入 Google Gemini 的 OpenAI 兼容端点；模型抽象层的目的是练习接口边界设计与可替换性，不要求同时维护多家供应商适配器，但接口必须满足“更换同等价类模型不需要修改概念代码”。引入第二家供应商必须在对应概念 README 中说明动机。
 - 模型接口必须显式表达能力差异，包括流式输出、工具调用、结构化输出、上下文限制、token 统计、停止原因和错误类型；不得假设所有兼容 API 行为完全一致。
 - 真实模型连接通过环境变量配置兼容 API；不得提交 API key、token、client secret 或证书私钥。
 - 核心测试必须支持固定响应或项目内 mock，不得强制访问外部模型 API。
@@ -236,7 +236,13 @@ cargo +nightly-2026-06-22 miri test
 
 操作系统包、数据库扩展、Keycloak provider、Kafka 插件和模型服务也必须使用精确版本。测试 fixture 和协议样例必须记录生成它们的软件版本。
 
-真实模型模式必须固定 API 版本和模型版本。供应商支持 snapshot ID 时必须使用 snapshot，不得使用会自动漂移的 `latest`、`default` 或同类别名；无法固定 snapshot 时，必须记录每次响应返回的实际模型版本，并在运行前通过回归门禁。
+真实模型模式不依赖 snapshot 保证可重复性。模型供应商无法长期承诺特定 snapshot 持续可用，因此 Agent 工程必须把“模型会变”作为正常假设处理。代码与配置文件中引用模型时使用 model family name（如 `gemini-3-flash`、`claude-sonnet-4-6`），`latest`、`default` 等会随供应商主版本跳跃的标识符仍禁止使用，因为它们跨越能力等价类。
+
+真实模型调用必须同时满足以下三条不变量：
+
+1. **模型指纹留痕**：每次真实调用必须记录响应中返回的实际模型标识、API 版本和供应商，写入结构化日志；涉及测试快照时必须将该字段纳入快照，但快照断言只比对输出内容，不比对指纹字段值。
+2. **能力等价类声明**：每个使用真实模型的概念必须在 README 中声明所依赖的能力等价类（如 `tier: flash` / `tier: pro` / `tier: opus`）。同等价类内的模型替换不得需要修改概念源码；跨等价类替换走 §4.5 升级流程。
+3. **评测门禁吸收变化**：模型替换或漂移后，必须由该概念的评测集判定通过与否，不得仅凭“调通了”判断兼容。无评测集的概念不得依赖真实模型作为验收手段；此类概念的 `cargo test` 必须使用 mock 或固定响应。
 
 ### 4.5 版本升级规则
 
@@ -457,7 +463,7 @@ Enterprise API
 82. `deterministic-evaluation`：对结构、协议、工具选择、参数和业务规则执行确定性评分。
 83. `llm-as-judge`：设计评分量表，处理位置偏差、长度偏差、重复评审和人工校准。
 84. `retrieval-evaluation`：评测 Recall@K、MRR、nDCG、引用正确率、答案忠实度和无证据拒答。
-85. `agent-regression-gate`：在模型、prompt、工具、知识库或代码变化后执行自动回归门禁。
+85. `agent-regression-gate`：在模型、prompt、工具、知识库或代码变化后执行自动回归门禁。触发条件包括 model family 内 snapshot 变更或响应模型指纹漂移。
 86. `online-evaluation`：实践 shadow、canary、A/B、用户反馈、线上失败采样和聚类。
 87. `evaluation-statistics`：计算置信区间、方差和显著性，避免根据单次运行或过小样本得出结论。
 
@@ -484,7 +490,7 @@ Enterprise API
 
 ### 5.14 模型能力适配
 
-101. `model-capability-adapter`：协商模型能力，处理上下文窗口、JSON Schema 方言、token 计数、prompt cache、限流和模型版本差异。
+101. `model-capability-adapter`：协商模型能力，处理上下文窗口、JSON Schema 方言、token 计数、prompt cache、限流、能力等价类划分与同等价类内模型替换、模型版本差异。
 102. `streaming-tool-calling`：解析增量文本和增量工具参数，处理流中断、重复片段、取消、续传和最终一致性。
 
 模型升级必须先通过离线回归，再进入 shadow 或 canary。实现必须保留模型和配置版本，并支持回滚；不得依赖供应商别名始终指向相同行为。
@@ -589,7 +595,7 @@ Enterprise API
 - 使用 `tracing` 或等价机制记录结构化事件。
 - 生产相关实验必须提供稳定 request ID、session ID、task ID 或 trace ID。
 - trace 默认不得记录完整 prompt、模型输出、工具参数和工具结果；确需记录内容时必须显式启用、脱敏并设置访问控制和保留期限。
-- 模型调用必须记录供应商、模型实际版本或响应版本、配置版本、token 使用量、延迟和终止原因。
+- 模型调用必须记录供应商、调用时使用的 model family、响应中返回的实际模型标识、声明的能力等价类、配置版本、token 使用量、延迟和终止原因。
 - 数据进入模型、记忆、索引或日志前必须执行来源标记、租户校验和敏感字段处理。
 - 测试不得依赖执行顺序、共享端口或其他概念已启动。
 
@@ -670,6 +676,7 @@ cargo run --locked
 - [ ] 外部副作用具有明确的幂等、审批和补偿策略。
 - [ ] 数据来源、权限、保留、删除和版本边界已定义。
 - [ ] 协议、模型、prompt、schema 和配置版本可追踪。
+- [ ] 使用真实模型的概念已声明能力等价类、记录响应模型指纹、具备评测门禁；无评测门禁的概念不依赖真实模型作为验收手段。
 - [ ] 已明确 Prompt Engineering、Context Engineering 和 Loop Engineering 的责任边界及各自评测指标。
 - [ ] Prompt 变量经过校验和转义，上下文片段具有来源与权限，loop 具有进度检测和稳定终止原因。
 - [ ] 对高风险项目完成威胁模型和故障注入计划。

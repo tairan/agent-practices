@@ -1,0 +1,1 @@
+Option A: {"title":"Plan A","date":"2026-06-24","attendees":["alice"],"decisions":[],"action_items":[]} or Option B: {"title":"Plan B","date":"2026-06-24","attendees":["bob"],"decisions":[],"action_items":[]}

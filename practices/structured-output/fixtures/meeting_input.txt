@@ -1,0 +1,6 @@
+QA Standup, 2026-06-24
+Attendees: Alice (Lead), Bob (Engineer), Carol (PM).
+Discussion: We reviewed the Q3 roadmap. Alice proposed adopting Feature X to
+unblock the integration project. After 30 min discussion the team agreed.
+Action items: Alice will draft the spec by 2026-07-01; Bob will review next
+week, no fixed date. Carol will socialise the decision with the wider org.
