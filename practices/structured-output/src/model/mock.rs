@@ -3,7 +3,11 @@
 
 use async_trait::async_trait;
 
-use super::{CONCEPT_TIER, CompletionRequest, CompletionResponse, ModelClient, ModelFingerprint};
+use super::{
+    CONCEPT_TIER, CapabilitySet, CapabilitySupport, CompletionRequest, CompletionResponse,
+    ConformanceStatus, ContentFilterStatus, FinishReason, ModelCapabilities, ModelClient,
+    ModelFingerprint,
+};
 use crate::error::ModelError;
 
 /// Returns whatever raw string was configured at construction. The mock makes
@@ -29,6 +33,36 @@ impl MockClient {
 
 #[async_trait]
 impl ModelClient for MockClient {
+    fn capabilities(&self) -> ModelCapabilities {
+        ModelCapabilities {
+            provider_declared: CapabilitySet {
+                streaming: CapabilitySupport::Unsupported,
+                tool_calling: CapabilitySupport::Unsupported,
+                parallel_tool_calling: CapabilitySupport::Unsupported,
+                structured_output: CapabilitySupport::Unsupported,
+                json_schema_dialect: None,
+                context_token_limit: None,
+                output_token_limit: None,
+                total_token_limit: None,
+                usage_reporting: CapabilitySupport::Unsupported,
+                prompt_cache: CapabilitySupport::Unsupported,
+            },
+            adapter_implemented: CapabilitySet {
+                streaming: CapabilitySupport::Unsupported,
+                tool_calling: CapabilitySupport::Unsupported,
+                parallel_tool_calling: CapabilitySupport::Unsupported,
+                structured_output: CapabilitySupport::Unsupported,
+                json_schema_dialect: None,
+                context_token_limit: None,
+                output_token_limit: None,
+                total_token_limit: None,
+                usage_reporting: CapabilitySupport::Unsupported,
+                prompt_cache: CapabilitySupport::Unsupported,
+            },
+            conformance_status: ConformanceStatus::DeterministicFixtureOnly,
+        }
+    }
+
     async fn complete(&self, req: CompletionRequest) -> Result<CompletionResponse, ModelError> {
         Ok(CompletionResponse {
             content: self.content.clone(),
@@ -36,10 +70,13 @@ impl ModelClient for MockClient {
                 provider: "mock",
                 requested_family: req.model_family,
                 response_model: format!("mock-fixture::{}", self.scenario),
+                response_model_missing: false,
                 api_version: None,
                 capability_tier: CONCEPT_TIER,
             },
             usage: None,
+            finish_reason: FinishReason::Stop,
+            content_filter: ContentFilterStatus::NotFiltered,
         })
     }
 }
@@ -54,8 +91,35 @@ mod tests {
         let resp = client
             .complete(CompletionRequest {
                 model_family: "gemini-3.5-flash".into(),
-                system: None,
-                user: "anything".into(),
+                context: crate::ContextBuilder::new("test", 1, 100)
+                    .add(crate::ContextItem::new(
+                        crate::ContextRole::System,
+                        "system",
+                        "test://system",
+                        "test",
+                        crate::TrustLevel::TrustedInstruction,
+                        "test",
+                        crate::AccessDecision::allowed("test"),
+                        1,
+                        "v1",
+                        None,
+                        "test",
+                    ))
+                    .add(crate::ContextItem::new(
+                        crate::ContextRole::User,
+                        "anything",
+                        "test://user",
+                        "test",
+                        crate::TrustLevel::UntrustedData,
+                        "test",
+                        crate::AccessDecision::allowed("test"),
+                        1,
+                        "v1",
+                        None,
+                        "test",
+                    ))
+                    .build()
+                    .unwrap(),
                 temperature: None,
                 max_tokens: None,
             })
@@ -66,5 +130,52 @@ mod tests {
         assert_eq!(resp.fingerprint.requested_family, "gemini-3.5-flash");
         assert_eq!(resp.fingerprint.response_model, "mock-fixture::ok");
         assert_eq!(resp.fingerprint.capability_tier, "flash");
+    }
+
+    #[tokio::test]
+    async fn request_and_response_debug_omit_raw_content_and_identifiers() {
+        let canary = "SECRET_MODEL_DEBUG_CANARY_9f31";
+        let request = CompletionRequest {
+            model_family: canary.into(),
+            context: crate::ContextBuilder::new("test", 1, 100)
+                .add(crate::ContextItem::new(
+                    crate::ContextRole::System,
+                    canary,
+                    canary,
+                    canary,
+                    crate::TrustLevel::TrustedInstruction,
+                    "test",
+                    crate::AccessDecision::allowed(canary),
+                    1,
+                    canary,
+                    None,
+                    canary,
+                ))
+                .add(crate::ContextItem::new(
+                    crate::ContextRole::User,
+                    canary,
+                    canary,
+                    canary,
+                    crate::TrustLevel::UntrustedData,
+                    "test",
+                    crate::AccessDecision::allowed(canary),
+                    1,
+                    canary,
+                    None,
+                    canary,
+                ))
+                .build()
+                .unwrap(),
+            temperature: None,
+            max_tokens: None,
+        };
+        assert!(!format!("{request:?}").contains(canary));
+
+        let response = MockClient::with_scenario(canary, canary)
+            .complete(request)
+            .await
+            .unwrap();
+        assert_eq!(response.content, canary);
+        assert!(!format!("{response:?}").contains(canary));
     }
 }

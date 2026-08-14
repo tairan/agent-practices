@@ -1,0 +1,300 @@
+{
+  "acceptance_contract_version": 4,
+  "baseline_task_outcome_pass_count": 6,
+  "baseline_task_outcome_pass_rate": 0.6,
+  "case_results": [
+    {
+      "baseline_accepted": true,
+      "baseline_task_match": true,
+      "expected": "success",
+      "illegal_accepts": 0,
+      "name": "ok",
+      "observed": "success",
+      "path": "fixtures/mock_responses/ok.json",
+      "target_measurements": 100,
+      "target_passes": 100
+    },
+    {
+      "baseline_accepted": false,
+      "baseline_task_match": false,
+      "expected": "success",
+      "illegal_accepts": 0,
+      "name": "fenced",
+      "observed": "success",
+      "path": "fixtures/mock_responses/fenced.txt",
+      "target_measurements": 100,
+      "target_passes": 100
+    },
+    {
+      "baseline_accepted": false,
+      "baseline_task_match": false,
+      "expected": "success",
+      "illegal_accepts": 0,
+      "name": "chatty",
+      "observed": "success",
+      "path": "fixtures/mock_responses/chatty.txt",
+      "target_measurements": 100,
+      "target_passes": 100
+    },
+    {
+      "baseline_accepted": false,
+      "baseline_task_match": true,
+      "expected": "empty",
+      "illegal_accepts": 0,
+      "name": "empty",
+      "observed": "empty",
+      "path": "fixtures/mock_responses/empty.txt",
+      "target_measurements": 100,
+      "target_passes": 100
+    },
+    {
+      "baseline_accepted": false,
+      "baseline_task_match": true,
+      "expected": "extraction",
+      "illegal_accepts": 0,
+      "name": "truncated",
+      "observed": "extraction",
+      "path": "fixtures/mock_responses/truncated.txt",
+      "target_measurements": 100,
+      "target_passes": 100
+    },
+    {
+      "baseline_accepted": false,
+      "baseline_task_match": true,
+      "expected": "ambiguous",
+      "illegal_accepts": 0,
+      "name": "multi_json",
+      "observed": "ambiguous",
+      "path": "fixtures/mock_responses/multi_json.txt",
+      "target_measurements": 100,
+      "target_passes": 100
+    },
+    {
+      "baseline_accepted": false,
+      "baseline_task_match": true,
+      "expected": "schema",
+      "illegal_accepts": 0,
+      "name": "missing_field",
+      "observed": "schema",
+      "path": "fixtures/mock_responses/missing_field.json",
+      "target_measurements": 100,
+      "target_passes": 100
+    },
+    {
+      "baseline_accepted": false,
+      "baseline_task_match": true,
+      "expected": "schema",
+      "illegal_accepts": 0,
+      "name": "type_mismatch",
+      "observed": "schema",
+      "path": "fixtures/mock_responses/type_mismatch.json",
+      "target_measurements": 100,
+      "target_passes": 100
+    },
+    {
+      "baseline_accepted": true,
+      "baseline_task_match": false,
+      "expected": "schema",
+      "illegal_accepts": 0,
+      "name": "missing_due_date",
+      "observed": "schema",
+      "path": "fixtures/mock_responses/missing_due_date.json",
+      "target_measurements": 100,
+      "target_passes": 100
+    },
+    {
+      "baseline_accepted": true,
+      "baseline_task_match": false,
+      "expected": "schema",
+      "illegal_accepts": 0,
+      "name": "extra_field",
+      "observed": "schema",
+      "path": "fixtures/mock_responses/extra_field.json",
+      "target_measurements": 100,
+      "target_passes": 100
+    }
+  ],
+  "context_policy_version": "1",
+  "dataset": "fixtures/mock_responses",
+  "dataset_files": [
+    {
+      "path": "fixtures/evaluation_manifest.json",
+      "sha256": "2e03d4cc6c1d28e5575c4a7b99297f9584632624ae1ada5fbbde12986e7fd20b"
+    },
+    {
+      "path": "fixtures/meeting_schema.json",
+      "sha256": "43e8b73f6b2abbce1c19c0f8bff5bcfbf87d940f2119f62082262713c9710938"
+    },
+    {
+      "path": "fixtures/meeting_input.txt",
+      "sha256": "fafff2816fe82b82cb380dbb8a99da34ff09e9d581c864445ba073ab489e7c26"
+    },
+    {
+      "path": "fixtures/mock_responses/ok.json",
+      "sha256": "934164fe6a3a74ba156fc743f62e69d32f8649b864327844796edbb5f28fafea"
+    },
+    {
+      "path": "fixtures/mock_responses/fenced.txt",
+      "sha256": "12919e49125f9a45c37c2fac39ad686a17689de2f96f48cbe43412329460b588"
+    },
+    {
+      "path": "fixtures/mock_responses/chatty.txt",
+      "sha256": "afd944817ddba1cec6bd1c511312fb8b52c0d703b54e878397fcec2b77ada209"
+    },
+    {
+      "path": "fixtures/mock_responses/empty.txt",
+      "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+    },
+    {
+      "path": "fixtures/mock_responses/truncated.txt",
+      "sha256": "b28d47d70b7d93f84e9c2090003ed0b1fe8e3809baba71fd754b63da0440c015"
+    },
+    {
+      "path": "fixtures/mock_responses/multi_json.txt",
+      "sha256": "6414d6d4a14a8ec5fe6c17c3e4f917f009b900221276fdbafbcfda3f88277447"
+    },
+    {
+      "path": "fixtures/mock_responses/missing_field.json",
+      "sha256": "d6be1c46f270062f8c805da4e5365f71a56dd3002bafa80dd3374726c28367d9"
+    },
+    {
+      "path": "fixtures/mock_responses/type_mismatch.json",
+      "sha256": "ccd616164c4327dd5e2317eb3c090e928f74d32f985d729345672e3d8ab55d4a"
+    },
+    {
+      "path": "fixtures/mock_responses/missing_due_date.json",
+      "sha256": "35bfaf70716e0ff79cca923a30f49cb7413b98ccf20974add0f3f6bddc70b939"
+    },
+    {
+      "path": "fixtures/mock_responses/extra_field.json",
+      "sha256": "83f8ff38928fec3079bc68f1519863e543d766b4b95e964dcd4bc01ceac63838"
+    }
+  ],
+  "dataset_fingerprint_sha256": "3b75badc5db971498d4f7e7f8ea25bbc1639865721c4a414d03640178925a7d1",
+  "dataset_version": "v4-10-cases",
+  "distinct_cases": 10,
+  "estimated_cost_usd": 0.0,
+  "execution": {
+    "arch": "x86_64",
+    "cargo": "cargo 1.96.1 (356927216 2026-06-26)\nrelease: 1.96.1\ncommit-hash: 356927216a2d746168cf76e5e88cc3f4b58e029d\ncommit-date: 2026-06-26\nhost: x86_64-unknown-linux-gnu\nlibgit2: 1.9.2 (sys:0.20.4 vendored)\nlibcurl: 8.19.0-DEV (sys:0.4.87+curl-8.19.0 vendored ssl:OpenSSL/3.5.4)\nssl: OpenSSL 3.5.4 30 Sep 2025\nos: Fedora 44.0.0 [64-bit]",
+    "command": "cargo run --locked --bin evaluate -- --output evidence/evaluation.json",
+    "declared_toolchain": "[toolchain]\nchannel = \"1.96.1\"\ncomponents = [\"clippy\", \"rustfmt\"]\nprofile = \"minimal\"",
+    "network_used": false,
+    "os": "linux",
+    "real_provider_conformance": "not_executed",
+    "rustc": "rustc 1.96.1 (31fca3adb 2026-06-26)\nbinary: rustc\ncommit-hash: 31fca3adb283cc9dfd56b49cdee9a96eb9c96ffd\ncommit-date: 2026-06-26\nhost: x86_64-unknown-linux-gnu\nrelease: 1.96.1\nLLVM version: 22.1.2"
+  },
+  "generated_at_utc_unix_seconds": 1784715769,
+  "illegal_accept_count": 0,
+  "invalid_distinct_cases": 7,
+  "invalid_measurements": 700,
+  "invalid_or_ambiguous_acceptance_rate": 0.0,
+  "iterations": 100,
+  "manifest_sha256": "2e03d4cc6c1d28e5575c4a7b99297f9584632624ae1ada5fbbde12986e7fd20b",
+  "manifest_version": "v4-10-cases",
+  "measurements": 1000,
+  "model_calls": 0,
+  "p50_pipeline_latency_ms": 0.007113,
+  "p95_pipeline_latency_ms": 0.013434,
+  "project": "structured-output",
+  "project_version": "0.1.0",
+  "prompt": {
+    "id": "structured-output.system",
+    "sha256": "7a6666b16fe63e45596ded24ee341b774773552f867dea96a92a1746a3adda6b",
+    "version": "1"
+  },
+  "schema_version": 2,
+  "source_files": [
+    {
+      "path": ".env.example",
+      "sha256": "c16756cfd7e4eda967faca4ba6e0a5b863697a1ba2a7fa76bc958b6620ed42b8"
+    },
+    {
+      "path": ".gitignore",
+      "sha256": "c77e2f836314bf66d2fe097835c46122691a6d84c31447738f1d4ffed5c8a9c1"
+    },
+    {
+      "path": "README.md",
+      "sha256": "502fa1672e63a944188c931106c5ffbd2a7d2dd44d614cd29e3d0e44a17239c5"
+    },
+    {
+      "path": "src/bin/evaluate.rs",
+      "sha256": "dad704486d6bc2794cf73b85291c3a04808bb93d10b2877d88d50df527305cda"
+    },
+    {
+      "path": "src/context.rs",
+      "sha256": "546c407043ebdb94216d98f6c0c2236e7fd873fa623648ca5093217a4f7c22eb"
+    },
+    {
+      "path": "src/error.rs",
+      "sha256": "2cb584024915da7bb64bf88d3029c8c70964d21995d1312eb8588347d24bda7f"
+    },
+    {
+      "path": "src/evaluation.rs",
+      "sha256": "314185167ef5dd09b092439bffd7234a3ebf3778c715a43f285dd922353b91df"
+    },
+    {
+      "path": "src/extract.rs",
+      "sha256": "2bb67addefb30c670642326989f394ab8747cc8c8a0261b1dffd4f032f501532"
+    },
+    {
+      "path": "src/lib.rs",
+      "sha256": "402b3b7dec043108e60e4d6fc71c297f9c9e1e92e591c78b85feb00fef1eb663"
+    },
+    {
+      "path": "src/main.rs",
+      "sha256": "25f3a30926b896651482df07bcafee261518c761fab53e3509e72c8488e7624a"
+    },
+    {
+      "path": "src/schema.rs",
+      "sha256": "a53eaee32450ba58b4053861dd56a3ba1e850a6003df25dac11ee7d70c5b0513"
+    },
+    {
+      "path": "src/model/mod.rs",
+      "sha256": "8c63d39028f6eecc2ab884b160b1ddba4d372eef378de03fbe86809b5a8b0f68"
+    },
+    {
+      "path": "src/model/mock.rs",
+      "sha256": "4ae8848335d4e0905ebf4af48b96cfc5b37b42ed3537b57ddad84f8aded61458"
+    },
+    {
+      "path": "src/model/gemini_openai.rs",
+      "sha256": "b92c0c62ba8f152cfca752fd583963e8dcd62d1ac8b6f10329462cd140e1a3ac"
+    },
+    {
+      "path": "tests/baseline.rs",
+      "sha256": "7c39891dd2c456f8cbad60789c0ce34867c33248ee79b36c5217554393b949e8"
+    },
+    {
+      "path": "tests/context_policy.rs",
+      "sha256": "8a76cb40fa4b2de1158d1f9237b064ea0f237345d61b16800b805c62b28dc8cc"
+    },
+    {
+      "path": "tests/end_to_end_mock.rs",
+      "sha256": "fc5878735cc535d34879b8eaeb6defdd3037289df3e254fa63166c7faa7cfc3a"
+    },
+    {
+      "path": "Cargo.toml",
+      "sha256": "abfaa76aa02a05943e7d84e361045ab6ea07553605ff4697a6935ca4dcbbe29d"
+    },
+    {
+      "path": "Cargo.lock",
+      "sha256": "1c5c65c449676bab461a1bd40adba5cf20c0f277d90eee15995a04baec555194"
+    },
+    {
+      "path": "practice.toml",
+      "sha256": "276cef07a039e4a3de7bb2088b03bb48305172f3810ae86d483cbf1d487fecd1"
+    },
+    {
+      "path": "acceptance.toml",
+      "sha256": "25d9e049c13118ec305bfe4b9bb5a144da9447440ea508dfcf17010332c7b5a6"
+    },
+    {
+      "path": "rust-toolchain.toml",
+      "sha256": "5a357c16adbb4740c3264b315c59c4882c286072146d7198757096197b498c52"
+    }
+  ],
+  "source_fingerprint_sha256": "5d7ad8d21a277c0ccef2a559d6eb28a82c67306d6cf42947728153b04f2ae7fe",
+  "task_outcome_pass_count": 1000,
+  "task_outcome_pass_rate": 1.0
+}

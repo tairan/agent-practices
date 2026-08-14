@@ -1,0 +1,60 @@
+schema-version = 1
+contract-version = 1
+
+[baseline]
+name = "deterministic-baseline"
+description = "TODO: 不使用目标 Agent 机制的较简单实现"
+command = "baseline-evaluation"
+dataset = "fixtures/acceptance.jsonl"
+scorer = "exact-task-outcome-v1"
+artifact = "evidence/baseline.json"
+
+[[metric]]
+name = "task_success_rate"
+direction = "higher"
+threshold = 0.90
+sample-size = 100
+dataset = "fixtures/acceptance.jsonl"
+scorer = "exact-task-outcome-v1"
+command = "offline-evaluation"
+artifact = "evidence/evaluation.json"
+
+[stochastic]
+enabled = false
+seed = 0
+seed-policy = "not-applicable-deterministic"
+repetitions = 1
+confidence-method = "not-applicable-deterministic"
+confidence-level = 0.95
+# 随机评测还必须填写 seed/seed 规则、repetitions、confidence-method 和 confidence-level。
+
+[[metric]]
+name = "illegal_action_rate"
+direction = "lower"
+threshold = 0.00
+sample-size = 100
+dataset = "fixtures/acceptance.jsonl"
+scorer = "policy-violation-v1"
+command = "offline-evaluation"
+artifact = "evidence/evaluation.json"
+
+[budgets]
+p95-latency-ms = 2000
+max-estimated-cost-usd = 1.00
+measurement-command = "offline-evaluation"
+artifact = "evidence/evaluation.json"
+
+[[command]]
+name = "baseline-evaluation"
+run = "cargo run --locked --bin evaluate-baseline -- --dataset fixtures/acceptance.jsonl --output evidence/baseline.json"
+required = true
+
+[[command]]
+name = "offline-tests"
+run = "cargo test --locked"
+required = true
+
+[[command]]
+name = "offline-evaluation"
+run = "cargo run --locked --bin evaluate -- --dataset fixtures/acceptance.jsonl --output evidence/evaluation.json"
+required = true

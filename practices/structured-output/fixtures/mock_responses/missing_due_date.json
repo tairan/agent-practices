@@ -1,0 +1,9 @@
+{
+  "title": "Q3 Planning",
+  "date": "2026-06-24",
+  "attendees": ["Alice"],
+  "decisions": [],
+  "action_items": [
+    {"owner": "Alice", "task": "Draft the specification"}
+  ]
+}

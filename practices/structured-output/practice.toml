@@ -1,0 +1,13 @@
+schema-version = 1
+id = "structured-output"
+title = "Structured Output"
+stage = "foundation"
+profiles = ["base", "model", "prompt", "context", "network"]
+competencies = ["model", "prompt-context", "evaluation"]
+
+[scope]
+solves = "从单次模型文本响应中抽取、校验并反序列化一个 JSON 对象"
+does-not-solve = "Prompt A/B 与优化、自动修复、重试、Agent loop、动态上下文或副作用"
+
+[acceptance]
+spec = "acceptance.toml"

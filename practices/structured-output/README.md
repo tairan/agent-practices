@@ -1,6 +1,6 @@
 # structured-output
 
-Practice **#1** of `agent-practices` (§5.1 in `AGENTS.md`).
+`agent-practices` 的基础实践，见[模型与单 Agent 基础目录](../../docs/practice-catalog.md#模型与单-agent-基础)。
 
 > "使用 JSON Schema 或等价约束解析和校验模型输出。"
 
@@ -23,14 +23,14 @@ structured error. **Nothing else.**
 
 | 不做的事 | 由哪个概念承担 |
 |---|---|
-| 失败重试 / 退避 | `resilience-patterns` #58 |
-| 反思与自动修复 JSON | `reflection-agent` #7 / `error-recovery` #10 |
-| 工具调用编排 | `tool-calling` #2 |
-| Agent loop | `agent-loop` #3 |
-| 评测集与基线 | `eval-dataset-design` #81 |
-| Streaming | `streaming-tool-calling` #102 |
-| Token / 成本预算 | `budget-control` #57 |
-| Prompt 版本化 | `prompt-engineering` #107 |
+| 失败重试 / 退避 | `resilience-patterns` |
+| 反思与自动修复 JSON | `reflection-agent` / `error-recovery` |
+| 工具调用编排 | `tool-calling` |
+| Agent loop | `agent-loop` |
+| 随机模型评测与统计 | `eval-dataset-design` / `evaluation-statistics` |
+| Streaming | `streaming-tool-calling` |
+| Token / 成本预算 | `budget-control` |
+| Prompt A/B、优化和综合验收 | `prompt-engineering` |
 
 特别地,**本概念刻意不使用 Gemini 的原生 `response_format` / structured-output**——练习的目的就是亲手实现 schema 校验。
 
@@ -59,7 +59,7 @@ Attendees: Alice (Lead), Bob (Engineer), Carol (PM).
 ...
 ```
 
-预期成功输出:`(MeetingMinutes, ModelFingerprint)`,模型指纹见 §9。
+预期成功输出:`(MeetingMinutes, ModelCallMetadata)`,模型指纹和调用元数据见[真实模型模式](#9-真实模型模式-vs-离线测试模式)。
 
 ---
 
@@ -85,7 +85,7 @@ Attendees: Alice (Lead), Bob (Engineer), Carol (PM).
                              │ T : DeserializeOwned
                              ▼
                 ┌──────────────────────────┐
-                │ (T, ModelFingerprint)    │
+                │ (T, ModelCallMetadata)   │
                 └──────────────────────────┘
 ```
 
@@ -97,14 +97,16 @@ Attendees: Alice (Lead), Bob (Engineer), Carol (PM).
 
 | 类型 | 文件 | 边界 |
 |---|---|---|
-| `ModelClient` (trait) | `src/model/mod.rs` | 唯一的模型抽象;任何符合 `flash` tier 的 OpenAI 兼容模型可替换实现 |
+| `ModelClient` (trait) | `src/model/mod.rs` | 唯一的模型抽象;当前真实适配器仅验证 Gemini OpenAI 兼容端点 |
 | `CompletionRequest` / `CompletionResponse` | 同上 | 单跳,无 streaming/tool/response_format 字段 |
-| `ModelFingerprint` | 同上 | §4.4 不变量 #1 的载体 |
+| `ModelFingerprint` | 同上 | [Model contract](../../docs/handbook/engineering-contracts.md#model-contract) 中模型标识与能力记录的载体 |
 | `MockClient` | `src/model/mock.rs` | 测试与离线 demo;不访问网络 |
 | `GeminiOpenAiClient` | `src/model/gemini_openai.rs` | OpenAI 兼容 chat completions;只用 `model` / `messages` / `temperature` / `max_tokens` |
 | `extract_json` | `src/extract.rs` | 纯函数,无 IO;失败模式枚举化 |
 | `SchemaValidator` | `src/schema.rs` | 两阶段:`iter_errors` 全收集,再 `from_value::<T>` |
-| `StructuredOutputError` | `src/error.rs` | 8 个变体覆盖每个失败点;原文均经 `truncate_excerpt`(≤512 字符) |
+| `StructuredOutputError` | `src/error.rs` | 8 个 pipeline 变体覆盖每个失败点;错误不携带原始模型内容 |
+| `ContextBuilder` / `ContextItem` | `src/context.rs` | 保存来源、provenance、信任、tenant、版本、时效、token 估算和选择理由 |
+| `ModelCallMetadata` | `src/model/mod.rs` | 保留 fingerprint、usage、停止原因、过滤结果和调用延迟 |
 
 协议:**OpenAI Chat Completions**(经 Gemini `v1beta/openai/` 兼容端点) +
 **JSON Schema Draft 2020-12**。本项目只实现 OpenAI 协议的最小子集(单轮、
@@ -120,11 +122,11 @@ Attendees: Alice (Lead), Bob (Engineer), Carol (PM).
 
 | 变量 | 必需? | 说明 |
 |---|---|---|
-| `STRUCTURED_OUTPUT_MODE` | 否 | `mock` / `real` / 未设;详见 §9 模式解析表 |
-| `GEMINI_API_KEY` | 仅 real | 不提交;留空且未显式选 real 则 fallback 到 mock |
-| `GEMINI_BASE_URL` | 否 | 默认 `https://generativelanguage.googleapis.com/v1beta/openai/` |
-| `GEMINI_MODEL_FAMILY` | 否 | 默认 `gemini-3.5-flash`;同 tier 内可替换 |
-| `GEMINI_TIMEOUT_SECS` | 否 | 默认 30 |
+| `STRUCTURED_OUTPUT_MODE` | 否 | `mock` / `real` / 未设;详见[模式解析表](#9-真实模型模式-vs-离线测试模式) |
+| `GEMINI_API_KEY` | 仅 real | 不提交；仅存在 key 不会触发 real 模式 |
+| `GEMINI_BASE_URL` | 禁止 | 凭据绑定到代码内固定的 Google 官方 HTTPS endpoint；设置该变量时 real 模式拒绝启动 |
+| `GEMINI_MODEL_FAMILY` | 否 | 固定 `gemini-3.5-flash`；其他值在联网前拒绝 |
+| `GEMINI_TIMEOUT_SECS` | 否 | 默认 30；real 模式严格接受 1..=120，非法值拒绝启动 |
 
 ---
 
@@ -132,21 +134,22 @@ Attendees: Alice (Lead), Bob (Engineer), Carol (PM).
 
 **前提**:用户全局 shell 若 export 了 `RUSTUP_TOOLCHAIN`,会覆盖
 `rust-toolchain.toml`。本仓库每个 concept 的 `rust-toolchain.toml` 都钉到
-`1.96.0`,因此运行前请 unset:
+`1.96.1`,因此运行前请 unset:
 
 ```bash
 unset RUSTUP_TOOLCHAIN
 ```
 
-按 AGENTS.md §9 验收 6 条命令(均在本目录执行):
+按[项目 Base 验收契约](../../docs/project-contract.md#base-验收)执行以下命令(均在本目录执行):
 
 ```bash
-rustc --version                                                    # 期望 1.96.0
-cargo --version                                                    # 期望 1.96.0
+rustc --version                                                    # 期望 1.96.1
+cargo --version                                                    # 期望 1.96.1
 cargo metadata --locked --format-version 1 > /dev/null
 cargo fmt --check
 cargo clippy --locked --all-targets --all-features -- -D warnings
 cargo test --locked
+cargo run --locked --bin evaluate -- --output evidence/evaluation.json
 cargo run --locked                                                 # 干净环境 → mock,退出 0
 ```
 
@@ -154,8 +157,8 @@ cargo run --locked                                                 # 干净环�
 
 ## 7. 成功路径、失败路径与预期执行轨迹
 
-每个 `fixtures/mock_responses/*` 都映射一种执行路径,均有 E2E 测试覆盖
-(`tests/end_to_end_mock.rs`):
+每个 `fixtures/mock_responses/*` 都在共享 evaluation manifest 中注册并由单元测试、
+baseline 和 evaluator 使用；核心抽取分支另由 `tests/end_to_end_mock.rs` 覆盖:
 
 | Fixture | 预期 |
 |---|---|
@@ -167,36 +170,38 @@ cargo run --locked                                                 # 干净环�
 | `multi_json.txt` | `MultipleJsonCandidates { count: 2 }` |
 | `missing_field.json` | `SchemaValidationFailed { issues: [..] }` |
 | `type_mismatch.json` | `SchemaValidationFailed { issues: [..] }` |
+| `missing_due_date.json` | Prompt 要求字段缺失，`SchemaValidationFailed` |
+| `extra_field.json` | Serde 会忽略但 schema 必须拒绝，`SchemaValidationFailed` |
 
 ---
 
 ## 8. 安全边界和已知限制
 
 - **不是生产代码**:无重试、无退避、无熔断、无审批。
-- **原始模型输出截断**:任何嵌入错误的原始片段都经 `truncate_excerpt`
-  截到 ≤ 512 字符(`src/error.rs::MAX_EXCERPT_CHARS`),避免日志被模型输出
-  撑爆;符合 AGENTS.md §8 "trace 默认不得记录完整模型输出"。
+- **错误默认不包含原始内容**:模型输出、provider 错误正文和 API key 均不进入
+  `Display`、`Debug` 或入口日志;错误只保留稳定分类、状态码和安全元数据。
 - **不调用 LLM 修复 JSON**:抽取失败就失败;自动修复属于 `reflection-agent`。
-- **不实现 token / 成本预算**:实测时请自行盯 Gemini 控制台用量。
+- **离线成本预算为 0**:`evaluate` 不调用模型;真实模式没有自动供应商花费上限,
+  仅允许显式手工运行并应同时监控 Gemini 控制台用量。
 - **本地原生 TLS**:`reqwest` 启用 `rustls`,默认载入系统证书。
-- **HTTP 超时强制 30s**:符合 §8 "所有外部调用必须设置超时"。
+- **HTTP 超时必须存在**:默认 30s,可通过 `GEMINI_TIMEOUT_SECS` 在 1..=120 秒内调整；
+  非数字、0 或超过上限均拒绝启动。响应正文最大 1 MiB,客户端禁止自动重定向。
 
 ---
 
 ## 9. 真实模型模式 vs 离线测试模式
 
-**模式自动解析表**(实现见 `src/main.rs::resolve_mode`):
+**模式解析表**(实现见 `src/main.rs::resolve_mode`，默认永不联网):
 
 | `STRUCTURED_OUTPUT_MODE` | `GEMINI_API_KEY` | 实际模式 | 行为 |
 |---|---|---|---|
 | `mock` | 任意 | mock | 强制 mock |
 | `real` | 已设 | real | 调用 Gemini 兼容端点 |
 | `real` | 未设 | — | **exit 1**,refusing to call real provider |
-| 未设 | 已设 | real | **自动 real**,stderr 不打 fallback 提示 |
-| 未设 | 未设 | mock | fallback 到 mock,stderr 提示 "set GEMINI_API_KEY to run against the real ..." |
+| 未设 | 任意 | mock | 安全默认；仅存在 key 不会触发网络或费用 |
 | 非法值 | 任意 | — | **exit 1** |
 
-**模型指纹留痕示例**(AGENTS.md §4.4 不变量 #1)。
+**模型指纹留痕示例**，遵循[模型接口契约](../../docs/handbook/engineering-contracts.md#model-contract)。
 真实模式 stdout 末尾:
 
 ```
@@ -204,23 +209,36 @@ cargo run --locked                                                 # 干净环�
 provider         = gemini-openai-compat
 requested_family = gemini-3.5-flash
 response_model   = <provider 返回的实际 model 字符串,可能是带日期后缀的 snapshot>
+model_id_missing = false
 api_version      = Some("v1beta")
 capability_tier  = flash
+usage            = <reported 或 unknown>
+finish_reason    = <provider 值或 unknown>
+content_filter   = <过滤枚举或 none>
 ```
 
 `response_model` 进入 fingerprint 是为了让"模型漂移"在日志中可见,但
-**测试不对其值断言**,以满足"同 tier 内可替换"。
+**测试不把单个 snapshot 值固化为常量**,但会验证响应 snapshot 的变化可被留痕；
+请求 family 仍必须是当前唯一验证的 `gemini-3.5-flash`。
 
-**能力等价类声明**(AGENTS.md §4.4 不变量 #2):
-本概念依赖 `tier: flash`。同 tier 内允许替换为 Claude Haiku /
-GPT-4o-mini / 其他 Gemini Flash 系列等,只要它们能在 system prompt 引导下
-返回包含合法 JSON 的文本——**不需要改本目录的任何源码**。跨 tier
-(切到 `pro` / `opus`)需走 AGENTS.md §4.5 升级流程。
+**能力等价类声明**，遵循[模型与 Provider 基线](../../docs/technology-baseline.md#模型与-provider-基线):
+本概念当前只声明精确的 `gemini-3.5-flash` 适配类,依赖单轮非流式文本、
+固定消息角色、正常停止原因和可选 usage。`ModelClient::capabilities` 分别记录
+`provider_declared`、`adapter_implemented` 和 `conformance_status`；供应商声明支持的
+stream、tool、structured output 与 cache 不会被误写成本适配器已实现，未知项保持
+`unknown`。同一 Gemini 兼容等价类替换仍必须通过
+真实 provider conformance;跨供应商或跨 `flash`/`pro` 等能力成本层级必须修改
+适配器或走[版本升级流程](../../docs/technology-baseline.md#版本升级)。
 
-**评测门禁说明**(AGENTS.md §4.4 不变量 #3):
-本概念**没有评测集**(按设计),因此真实模型不构成验收手段——`cargo test`
-全部走 mock。真实模式仅供学习者手动观察响应。要把模型变化纳入回归判定,
-是 `eval-dataset-design` #81 与 `agent-regression-gate` #85 的工作。
+`deferred`:本项目尚未执行带真实凭据的 provider conformance,因此不得声称已验证
+真实端点兼容性;本地原始 HTTP fixture 只证明适配器的确定性协议边界。
+
+**评测门禁说明**，遵循[评测与实验设计契约](../../docs/handbook/engineering-contracts.md#评测与实验设计):
+本概念使用 10 个由 contract v4 manifest 逐项固定的 fixture 做确定性验收，并用
+`tests/baseline.rs` 对照直接
+`serde_json` 解析。它不包含随机真实模型评测，因此真实模型不构成验收手段；
+`cargo test` 全部走 mock。真实模式仅供学习者手动观察响应。模型变化的统计评测
+由 `eval-dataset-design`、`evaluation-statistics` 和 `agent-regression-gate` 承担。
 
 ---
 
@@ -228,7 +246,7 @@ GPT-4o-mini / 其他 Gemini Flash 系列等,只要它们能在 system prompt 引
 
 - **JSON Schema Draft 2020-12** —— <https://json-schema.org/draft/2020-12/schema>
 - **OpenAI Chat Completions** —— Gemini `v1beta/openai/` 兼容子集
-- **AGENTS.md** 仓库根 —— 最后核对日期 2026-06-24
+- **仓库共享标准与版本** —— 采用[技术基线](../../docs/technology-baseline.md)记录的版本和核对日期；本项目未声明偏离
 
 ---
 
@@ -244,8 +262,8 @@ GPT-4o-mini / 其他 Gemini Flash 系列等,只要它们能在 system prompt 引
 4. JSON 字段多了 schema 不允许的内容(`additionalProperties: false`)——
    serde 默认会**忽略**而不是报错;只有 schema 能拦住。
 
-本概念用 ~600 行代码换回:对 8 种失败模式的明确分类、可逐条修复的 issue
-列表、§4.4 fingerprint 留痕。
+本概念用显式边界代码换回:对 10 种结果与失败模式的明确分类、脱敏 issue
+列表和可审计的 fingerprint 留痕。
 
 ---
 
@@ -253,11 +271,11 @@ GPT-4o-mini / 其他 Gemini Flash 系列等,只要它们能在 system prompt 引
 
 | 指标 | 定义 | 测量方式 |
 |---|---|---|
-| 抽取成功率 | E2E 测试中 `Ok(_)` 的比例 | `cargo test --locked` 输出 |
+| Fixture 契约通过率 | 10 个 fixture 的成功或稳定错误分类符合预期的比例 | evaluator 与 `evaluation::tests` |
 | 首次校验失败定位率 | 校验失败时 `issues.len() ≥ 1` 的比例 | 100%(测试中验证) |
-| p50 抽取延迟 | `extract_json` 在 ok 路径下的耗时 | < 1ms(本机,纯字符串扫描;实测可用 criterion 测) |
-| 真实调用延迟 | `GeminiOpenAiClient::complete` 端到端 | 取决于 Gemini;HTTP 超时 30s |
-| 错误信息泄露上限 | 嵌入错误的原文不超过 | 512 字符(`MAX_EXCERPT_CHARS`) |
+| p50/p95 pipeline 延迟 | 10 fixture × 100 次完整抽取、schema 校验和反序列化 | `evaluate` 写入 `evidence/evaluation.json`;p95 ≤ 10ms |
+| 真实调用延迟 | `GeminiOpenAiClient::complete` 端到端 | 取决于 Gemini;默认 HTTP 超时 30s |
+| 敏感错误回显率 | canary 出现在错误 `Display`/`Debug` 的比例 | 0%;单元测试验证 |
 
 ---
 
@@ -267,53 +285,107 @@ GPT-4o-mini / 其他 Gemini Flash 系列等,只要它们能在 system prompt 引
   与任何外部数据无关;随仓库提交。
 - 真实模式下 Gemini 端点接收 system prompt + 会议纪要原文;**会议纪要本身
   也是 fixture(不含真实人员/事项)**,不存在个人信息处理问题。
-- 本概念不写盘、不缓存、不持久化任何东西。
+- 模型调用路径不写盘、不缓存、不持久化输入或输出。离线 evaluator 只写
+  `evidence/evaluation.json`，其中不含 fixture 原文或模型原文。
+- Evidence 保留于仓库；清理时删除该 JSON，使用 README 中的 evaluator 命令重建。
+  产物记录 UTC epoch、实际命令、源码/配置与数据集的逐文件 SHA-256 清单及组合摘要、
+  契约/prompt/context policy/数据集版本、实际 rustc/cargo 输出和 OS/架构；真实
+  provider conformance 明确记录为未执行。
+- Gemini 侧的保留、训练使用、处理地域和删除能力在本项目中均记录为
+  `unknown`,未做供应商政策核验;因此真实模式只允许发送仓库内合成 fixture,
+  不得发送真实会议纪要或生产数据。供应商边界状态核对日期为 2026-07-22。
 
 ---
 
 ## 14. 版本记录方式
 
-- **依赖**:`Cargo.toml` 直接依赖全部 `=x.y.z` 精确版本,符合 §4.2;
+- **依赖**:`Cargo.toml` 直接依赖全部 `=x.y.z` 精确版本,符合[Rust 依赖基线](../../docs/technology-baseline.md#rust-依赖);
   `Cargo.lock` 提交,锁定传递依赖。
-- **toolchain**:`rust-toolchain.toml` 钉 1.96.0。
-- **模型版本**:**不在配置中固化**;`ModelFingerprint::response_model` 留痕
-  响应里 provider 返回的实际 model 字符串(可能含日期后缀的 snapshot)。
+- **toolchain**:`rust-toolchain.toml` 钉 1.96.1。
+- **模型版本**:请求 family 固定为 `gemini-3.5-flash`;其他 family 在联网前拒绝。
+  `ModelFingerprint::response_model` 留痕 provider 返回的实际 model 字符串。
+- **能力来源**:供应商声明输入上限 1,048,576 token、输出上限 65,536 token，未声明独立的总量字段；当前
+  适配器只实现单轮非流式文本与 usage 解析，并在联网前拒绝超出输入、输出上限的请求，同时保守地把
+  输入与请求输出之和限制为 1,048,576 token。能力描述中的 `total_token_limit = None` 表示供应商未声明，
+  `adapter_implemented.total_token_limit = 1,048,576` 表示本地强制边界。
+  共享来源与核对日期见技术基线，真实端点 conformance 仍为 `deferred`。
 
 ---
 
 ## 15. Prompt / Context / Loop Engineering 责任边界
 
-按 AGENTS.md §5.16 与 §10 检查清单的硬要求,**显式划分**三类工程在本概念
+按[Agent 工程实现契约](../../docs/handbook/engineering-contracts.md)的要求,**显式划分**三类工程在本概念
 中的责任分配:
 
 ### Prompt Engineering
 - 唯一的 prompt contract 是 `src/main.rs::SYSTEM_PROMPT`:要求"只返回单个
-  JSON 对象,不要 prose,不要 markdown 围栏"。
-- 本概念**不练习 prompt 版本化、不做 A/B、不实现 few-shot**——那是
-  `prompt-engineering` #107。本 SYSTEM_PROMPT 故意写得朴素,以暴露
+  JSON 对象,不要 prose,不要 markdown 围栏";稳定 ID 为
+  `structured-output.system`,版本为 `1`。
+- 本概念不做 A/B 或 few-shot;本 SYSTEM_PROMPT 故意写得朴素,以暴露
   "模型仍可能违规"的现实(从而让 `extract::extract_json` 不得不存在)。
 - 不可信内容(`fixtures/meeting_input.txt`)被显式包在 user message 内,
   与 system 指令分离。
 
 ### Context Engineering
-- 本概念 context **只有两段**:`system`(指令)+ `user`(会议纪要原文)。
-- 没有 RAG、没有记忆、没有动态拼接,因此无来源标签 / 信任级别 / 时效问题
-  ——但**留出了 context provenance 的位置**:`MeetingMinutes` 解析结果
-  可作为下游 concept 的 context source 输入。
+- 本概念 context **只有两段**:`system`(可信项目指令)+ `user`(不可信合成
+  fixture)。两段都通过 `ContextBuilder` 保存来源、provenance、tenant、版本、
+  时间、有效期、token 估算和选择理由。
+- Builder 拒绝过期、跨 tenant、重复 role 和超预算片段，并按最终不可变文本重算
+  token 估算。本项目无缓存、RAG、
+  压缩或动态排序。
 
 ### Loop Engineering
 - 本概念**无 loop**:单跳即终止。
-- 终止原因稳定枚举:`Ok((T, fingerprint))` 或 `StructuredOutputError`
-  的 8 个变体之一。
-- 这是后续 `agent-loop` #3、`error-recovery` #10、`reflection-agent` #7
+- 终止原因稳定枚举:只有 `FinishReason::Stop` 可进入解析；过滤、输出上限、未知或
+  缺失停止原因均先返回类型化 `ModelError`。最终结果为 `Ok((T, metadata))` 或
+  `StructuredOutputError`。
+- 这是后续 `agent-loop`、`error-recovery`、`reflection-agent`
   的**起点**——它们将围绕本概念的失败枚举构建重试/反思/loop。
 
 ---
 
 ## 16. 已知限制
 
-- 抽取器**不支持顶层 JSON 数组**(本概念 demo 是单对象);加上不难,
-  但暂未加入以保持失败面紧凑。
-- `gemini_openai.rs` 不解析 `model` 缺失或非字符串的奇怪响应——视为
-  `ModelError::Http`(反序列化失败)。生产代码应该更宽容。
+- 抽取器明确拒绝顶层 JSON 数组并返回 `UnexpectedTopLevelType`;本概念只接受对象。
+- provider 缺失 `model` 时记录 `response_model = "unknown"` 和
+  `response_model_missing = true`;非字符串等协议不合规则返回稳定 `Protocol` 错误。
 - Clippy 配置为默认 lints;未为本概念定制更严格规则。
+
+---
+
+## 17. 项目声明与验收契约迁移
+
+- `practice.toml` 声明 `base`、`model`、`prompt`、`context` 和 `network` profile。
+- `acceptance.toml` contract v4 通过 manifest 摘要预注册 10 个固定 fixture，并预注册
+  prompt ID/version/SHA；evaluator 直接解析该文件取得全部阈值与预算，对比直接 `serde_json`
+  baseline 0.60 与当前抽取、schema 校验实现；核心验收不访问网络，估算模型成本为 0。
+- Prompt ID 为 `structured-output.system`，版本为 `1`。选择单一 prompt 是为了
+  保持本项目变量最少，并刻意让违规输出由确定性解析边界处理；本项目不据此
+  声称完成 `prompt-engineering` 综合能力。
+- 当前契约于 2026-07-22 为既有项目补录，不能证明此前实现经过预注册；它只约束
+  此日期后的实现、调优和验收。共享外部标准版本与核对日期见技术基线。
+
+---
+
+## 18. Profile 验收说明与 N/A
+
+- `model`:HTTP fixture 覆盖拒答、带内容的过滤、输出上限、未知/缺失停止原因、限流、
+  超时、协议错误、缺失模型标识、4xx/5xx 重试分类和能力描述；缺失 usage 明确记录为 `unknown`。
+- `prompt`:`ContextBuilder` 测试证明可信 instruction 与不可信变量保持分离,
+  Prompt ID/版本和内容 SHA-256 绑定;非法输出由 10 个 fixture 做确定性回归。
+- `context`:覆盖过期、未来时间、跨 tenant、静态 inclusion 拒绝、trust/role 提权、
+  重复 role、空低价值项、伪造估算和 token 超预算；来源与信任元数据通过
+  `BuiltContext::items()` 只读访问。
+- `network`:覆盖慢响应、不可用、断连、400/401/403/408/429/500/503、禁止重定向
+  和 1 MiB 响应上限。
+- `N/A: network retry exhaustion`:本项目刻意不实现重试,任何 transport 或
+  provider 错误单次失败;重试属于 `resilience-patterns`。
+- `N/A: Prompt candidate A/B`:本项目目标是确定性抽取和 schema 校验,固定单一
+  prompt 用于暴露模型违规;候选比较属于后续 `prompt-engineering` 综合实践。
+- `N/A: context cache invalidation`:本项目没有 context 缓存或持久化。
+- `N/A: auth`:全部 context 都是仓库内公开合成数据；`tenant` 仅是 context namespace，
+  `AccessDecision` 仅演示静态 inclusion policy，不验证身份/token，也不判断主体对受保护
+  资源的权限。引入受保护数据或主体/资源授权决策时必须新增 `auth` profile 和威胁模型。
+
+适配类限定为精确的 Gemini OpenAI-compatible `gemini-3.5-flash`，真实 conformance
+当前为 `deferred`;跨供应商或跨能力/成本层级时必须走适配器变更和独立升级流程。

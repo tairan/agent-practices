@@ -1,0 +1,5 @@
+[tools]
+node = "24"
+python = "3.13"
+uv = "latest"
+rust = "1.91"

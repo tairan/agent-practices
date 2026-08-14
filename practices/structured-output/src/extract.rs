@@ -12,7 +12,7 @@
 //!    Each balanced block is a candidate.
 //! 5. Exactly one candidate → return it parsed. Zero candidates → extraction
 //!    failed. Two or more candidates → ambiguity error (intentional: see
-//!    AGENTS.md §8 "use structured validation; do not depend on the model
+//!    the structured-validation rule: do not depend on the model
 //!    'guaranteeing' format").
 //!
 //! Top-level JSON arrays are out of scope for this concept (the demo schema is
@@ -21,7 +21,7 @@
 
 use serde_json::Value;
 
-use crate::error::{StructuredOutputError, truncate_excerpt};
+use crate::error::StructuredOutputError;
 
 /// Extract a single JSON object from a model output and parse it to a
 /// `serde_json::Value`. See module docs for the algorithm.
@@ -36,30 +36,33 @@ pub fn extract_json(content: &str) -> Result<Value, StructuredOutputError> {
         return Err(StructuredOutputError::EmptyResponse);
     }
 
-    // Fast path: the whole body parses as JSON.
-    if let Ok(v @ Value::Object(_)) = serde_json::from_str::<Value>(body) {
-        return Ok(v);
+    // Fast path: the whole body parses as JSON. A valid non-object is a stable
+    // type error, not prose to scan for nested object candidates.
+    match serde_json::from_str::<Value>(body) {
+        Ok(v @ Value::Object(_)) => return Ok(v),
+        Ok(other) => {
+            let actual = match other {
+                Value::Array(_) => "array",
+                Value::String(_) => "string",
+                Value::Number(_) => "number",
+                Value::Bool(_) => "boolean",
+                Value::Null => "null",
+                Value::Object(_) => unreachable!(),
+            };
+            return Err(StructuredOutputError::UnexpectedTopLevelType { actual });
+        }
+        Err(_) => {}
     }
 
     // Slow path: find balanced top-level { ... } blocks.
     let candidates = find_object_candidates(body);
     match candidates.len() {
-        0 => Err(StructuredOutputError::JsonExtractionFailed {
-            raw_excerpt: truncate_excerpt(content),
-        }),
+        0 => Err(StructuredOutputError::JsonExtractionFailed),
         1 => {
             let slice = candidates.into_iter().next().unwrap();
-            serde_json::from_str::<Value>(slice).map_err(|e| {
-                StructuredOutputError::JsonParseError {
-                    raw_excerpt: truncate_excerpt(slice),
-                    source: e,
-                }
-            })
+            serde_json::from_str::<Value>(slice).map_err(StructuredOutputError::JsonParseError)
         }
-        n => Err(StructuredOutputError::MultipleJsonCandidates {
-            count: n,
-            raw_excerpt: truncate_excerpt(content),
-        }),
+        n => Err(StructuredOutputError::MultipleJsonCandidates { count: n }),
     }
 }
 
@@ -190,10 +193,7 @@ mod tests {
     fn extract_truncated_returns_extraction_failed() {
         // Open brace with no matching close → no candidates found.
         let err = extract_json(r#"{"a": 1, "b": [1, 2"#).unwrap_err();
-        assert!(matches!(
-            err,
-            StructuredOutputError::JsonExtractionFailed { .. }
-        ));
+        assert!(matches!(err, StructuredOutputError::JsonExtractionFailed));
     }
 
     #[test]
@@ -209,10 +209,7 @@ mod tests {
     #[test]
     fn extract_no_braces_at_all() {
         let err = extract_json("the answer is 42").unwrap_err();
-        assert!(matches!(
-            err,
-            StructuredOutputError::JsonExtractionFailed { .. }
-        ));
+        assert!(matches!(err, StructuredOutputError::JsonExtractionFailed));
     }
 
     #[test]
@@ -252,5 +249,23 @@ mod tests {
         // so this falls through to the candidate scan, which finds exactly one.
         let v = extract_json(raw).unwrap();
         assert_obj_keys(&v, &["a"]);
+    }
+
+    #[test]
+    fn rejects_top_level_arrays_without_extracting_nested_objects() {
+        for raw in [r#"[{"a":1}]"#, r#"[{"a":1},{"b":2}]"#] {
+            assert!(matches!(
+                extract_json(raw),
+                Err(StructuredOutputError::UnexpectedTopLevelType { actual: "array" })
+            ));
+        }
+    }
+
+    #[test]
+    fn errors_do_not_echo_sensitive_model_content() {
+        let canary = "SECRET_CANARY_9f31";
+        let error = extract_json(canary).unwrap_err();
+        assert!(!error.to_string().contains(canary));
+        assert!(!format!("{error:?}").contains(canary));
     }
 }

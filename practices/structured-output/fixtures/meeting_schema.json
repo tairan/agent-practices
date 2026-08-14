@@ -20,7 +20,7 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["owner", "task"],
+        "required": ["owner", "task", "due_date"],
         "additionalProperties": false,
         "properties": {
           "owner": { "type": "string", "minLength": 1 },

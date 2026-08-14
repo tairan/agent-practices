@@ -9,7 +9,8 @@
 use serde_json::Value;
 use structured_output::model::mock::MockClient;
 use structured_output::{
-    CompletionRequest, MEETING_SCHEMA_SRC, MeetingMinutes, SchemaValidator, StructuredOutputError,
+    AccessDecision, CompletionRequest, ContextBuilder, ContextItem, ContextRole,
+    MEETING_SCHEMA_SRC, MeetingMinutes, SchemaValidator, StructuredOutputError, TrustLevel,
     extract_structured,
 };
 
@@ -21,8 +22,35 @@ fn validator() -> SchemaValidator {
 fn request() -> CompletionRequest {
     CompletionRequest {
         model_family: "gemini-3.5-flash".into(),
-        system: Some("You return JSON only.".into()),
-        user: "Summarize the meeting.".into(),
+        context: ContextBuilder::new("test", 1, 100)
+            .add(ContextItem::new(
+                ContextRole::System,
+                "You return JSON only.",
+                "test://system",
+                "test",
+                TrustLevel::TrustedInstruction,
+                "test",
+                AccessDecision::allowed("test"),
+                1,
+                "v1",
+                None,
+                "test",
+            ))
+            .add(ContextItem::new(
+                ContextRole::User,
+                "Summarize the meeting.",
+                "test://user",
+                "test",
+                TrustLevel::UntrustedData,
+                "test",
+                AccessDecision::allowed("test"),
+                1,
+                "v1",
+                None,
+                "test",
+            ))
+            .build()
+            .unwrap(),
         temperature: Some(0.0),
         max_tokens: Some(1024),
     }
@@ -33,15 +61,19 @@ async fn ok_response_yields_typed_value() {
     let raw = include_str!("../fixtures/mock_responses/ok.json");
     let client = MockClient::with_scenario("ok", raw);
     let v = validator();
-    let (parsed, fp): (MeetingMinutes, _) =
+    let (parsed, metadata): (MeetingMinutes, _) =
         extract_structured(&client, &v, request()).await.unwrap();
 
     assert_eq!(parsed.title, "Q3 Planning");
     assert_eq!(parsed.attendees, vec!["alice", "bob"]);
     assert_eq!(parsed.action_items.len(), 2);
-    assert_eq!(fp.provider, "mock");
-    assert_eq!(fp.capability_tier, "flash");
-    assert_eq!(fp.response_model, "mock-fixture::ok");
+    assert_eq!(metadata.fingerprint.provider, "mock");
+    assert_eq!(metadata.fingerprint.capability_tier, "flash");
+    assert_eq!(metadata.fingerprint.response_model, "mock-fixture::ok");
+    assert_eq!(
+        metadata.finish_reason,
+        structured_output::FinishReason::Stop
+    );
 }
 
 #[tokio::test]
@@ -83,10 +115,7 @@ async fn truncated_response_fails_extraction() {
     let err = extract_structured::<MeetingMinutes>(&client, &v, request())
         .await
         .unwrap_err();
-    assert!(matches!(
-        err,
-        StructuredOutputError::JsonExtractionFailed { .. }
-    ));
+    assert!(matches!(err, StructuredOutputError::JsonExtractionFailed));
 }
 
 #[tokio::test]

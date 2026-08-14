@@ -1,16 +1,18 @@
-//! Demo entry. Picks a `ModelClient` from env vars (see README §9 mode
+//! Demo entry. Picks a `ModelClient` from env vars (see the README mode
 //! resolution table), runs the pipeline once against the meeting-minutes
-//! schema, and prints the typed result plus the §4.4 model fingerprint.
+//! schema, and prints the typed result plus model-call metadata.
 
 use std::process::ExitCode;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde_json::Value;
 use tracing::{error, info, warn};
 
 use structured_output::{
-    CompletionRequest, MEETING_SCHEMA_SRC, MeetingMinutes, ModelFingerprint, SchemaValidator,
-    StructuredOutputError, extract_structured,
+    AccessDecision, CompletionRequest, ContextBuilder, ContextItem, ContextRole,
+    MAX_MODEL_TIMEOUT_SECS, MEETING_SCHEMA_SRC, MIN_MODEL_TIMEOUT_SECS, MeetingMinutes,
+    ModelCallMetadata, PROMPT_ID, PROMPT_VERSION, SYSTEM_PROMPT, SchemaValidator,
+    StructuredOutputError, TrustLevel, VERIFIED_MODEL_FAMILY, extract_structured,
     model::gemini_openai::{GeminiConfig, GeminiOpenAiClient},
     model::mock::MockClient,
 };
@@ -57,7 +59,7 @@ enum Mode {
 
 enum MockReason {
     ExplicitMock,
-    AutoFallbackNoKey,
+    SafeDefault,
 }
 
 fn resolve_mode() -> Result<Mode, String> {
@@ -65,52 +67,76 @@ fn resolve_mode() -> Result<Mode, String> {
     let key = std::env::var("GEMINI_API_KEY")
         .ok()
         .filter(|s| !s.trim().is_empty());
+    let base_url_is_set = std::env::var_os("GEMINI_BASE_URL").is_some();
+    let family = std::env::var("GEMINI_MODEL_FAMILY").ok();
+    let timeout_value = std::env::var("GEMINI_TIMEOUT_SECS").ok();
+    resolve_mode_values(
+        mode.as_deref(),
+        key,
+        base_url_is_set,
+        family,
+        timeout_value.as_deref(),
+    )
+}
 
-    match mode.as_deref() {
+fn resolve_mode_values(
+    mode: Option<&str>,
+    key: Option<String>,
+    base_url_is_set: bool,
+    family: Option<String>,
+    timeout_value: Option<&str>,
+) -> Result<Mode, String> {
+    match mode {
         Some("mock") => Ok(Mode::Mock {
             reason: MockReason::ExplicitMock,
         }),
         Some("real") => match key {
             Some(api_key) => Ok(Mode::Real {
-                cfg: build_real_config(api_key)?,
-                family: family_from_env(),
+                cfg: build_real_config(api_key, base_url_is_set, timeout_value)?,
+                family: family_from_value(family)?,
             }),
             None => Err(
                 "STRUCTURED_OUTPUT_MODE=real but GEMINI_API_KEY is unset; refusing to call real provider"
                     .into(),
             ),
         },
-        Some(other) => Err(format!(
-            "invalid STRUCTURED_OUTPUT_MODE={other:?}; expected 'mock' or 'real'"
-        )),
-        None => match key {
-            Some(api_key) => Ok(Mode::Real {
-                cfg: build_real_config(api_key)?,
-                family: family_from_env(),
-            }),
-            None => Ok(Mode::Mock {
-                reason: MockReason::AutoFallbackNoKey,
-            }),
-        },
+        Some(_) => Err("invalid STRUCTURED_OUTPUT_MODE; expected 'mock' or 'real'".into()),
+        None => Ok(Mode::Mock {
+            reason: MockReason::SafeDefault,
+        }),
     }
 }
 
-fn build_real_config(api_key: String) -> Result<GeminiConfig, String> {
-    let base_url = std::env::var("GEMINI_BASE_URL")
-        .unwrap_or_else(|_| "https://generativelanguage.googleapis.com/v1beta/openai/".into());
-    let timeout_secs: u64 = std::env::var("GEMINI_TIMEOUT_SECS")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(30);
+fn build_real_config(
+    api_key: String,
+    base_url_is_set: bool,
+    timeout_value: Option<&str>,
+) -> Result<GeminiConfig, String> {
+    if base_url_is_set {
+        return Err("GEMINI_BASE_URL is not configurable when using a Gemini API key".into());
+    }
+    let timeout_secs = match timeout_value {
+        Some(value) => value
+            .parse::<u64>()
+            .map_err(|_| "GEMINI_TIMEOUT_SECS must be an integer from 1 through 120")?,
+        None => 30,
+    };
+    if !(MIN_MODEL_TIMEOUT_SECS..=MAX_MODEL_TIMEOUT_SECS).contains(&timeout_secs) {
+        return Err("GEMINI_TIMEOUT_SECS must be an integer from 1 through 120".into());
+    }
     Ok(GeminiConfig {
-        base_url,
         api_key,
         timeout: Duration::from_secs(timeout_secs),
     })
 }
 
-fn family_from_env() -> String {
-    std::env::var("GEMINI_MODEL_FAMILY").unwrap_or_else(|_| "gemini-3.5-flash".into())
+fn family_from_value(family: Option<String>) -> Result<String, String> {
+    let family = family.unwrap_or_else(|| VERIFIED_MODEL_FAMILY.into());
+    if family == VERIFIED_MODEL_FAMILY {
+        Ok(family)
+    } else {
+        Err("GEMINI_MODEL_FAMILY is outside the verified capability class".into())
+    }
 }
 
 /// Build a boxed `MockClient` typed as `Box<dyn ModelClient>`.
@@ -125,7 +151,7 @@ async fn run_with_mock(
     content: &'static str,
     validator: &SchemaValidator,
     request: CompletionRequest,
-) -> Result<(MeetingMinutes, ModelFingerprint), StructuredOutputError> {
+) -> Result<(MeetingMinutes, ModelCallMetadata), StructuredOutputError> {
     let client = MockClient::with_scenario(scenario, content);
     extract_structured::<MeetingMinutes>(&client, validator, request).await
 }
@@ -134,7 +160,7 @@ async fn run_with_real(
     cfg: GeminiConfig,
     validator: &SchemaValidator,
     request: CompletionRequest,
-) -> Result<(MeetingMinutes, ModelFingerprint), Box<dyn std::error::Error>> {
+) -> Result<(MeetingMinutes, ModelCallMetadata), Box<dyn std::error::Error>> {
     let client = GeminiOpenAiClient::new(cfg)?;
     Ok(extract_structured::<MeetingMinutes>(&client, validator, request).await?)
 }
@@ -149,7 +175,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     // itself. `extract_structured` takes `&dyn ModelClient` and the deref
     // coercion happens at the call site — rust-analyzer handles this form
     // correctly, unlike `Box<dyn ModelClient>` produced cross-arm.
-    let (parsed, fingerprint) = match mode {
+    let (parsed, metadata) = match mode {
         Mode::Mock { reason } => {
             match reason {
                 MockReason::ExplicitMock => {
@@ -159,15 +185,14 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                         "running with MockClient"
                     );
                 }
-                MockReason::AutoFallbackNoKey => {
+                MockReason::SafeDefault => {
                     eprintln!(
-                        "structured-output: GEMINI_API_KEY not set; falling back to MockClient.\n\
-                         set GEMINI_API_KEY to run against the real Gemini OpenAI-compatible endpoint."
+                        "structured-output: defaulting to MockClient; set STRUCTURED_OUTPUT_MODE=real and GEMINI_API_KEY to opt in to the fixed Gemini endpoint."
                     );
-                    info!(mode = "mock", source = "fallback", "no api key → mock");
+                    info!(mode = "mock", source = "safe-default", "using safe default");
                 }
             }
-            let request = build_request("gemini-3.5-flash");
+            let request = build_request("gemini-3.5-flash")?;
             run_with_mock("ok", MOCK_OK_FIXTURE, &validator, request).await?
         }
         Mode::Real { cfg, family: f } => {
@@ -176,55 +201,148 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 family = %f,
                 "running with GeminiOpenAiClient"
             );
-            warn!("real mode hits the network; the test suite never does — see AGENTS.md §4 / §9");
-            let request = build_request(&f);
+            warn!("real mode hits the network; core tests remain fixture-only by contract");
+            let request = build_request(&f)?;
             run_with_real(cfg, &validator, request).await?
         }
     };
 
     info!(
-        provider = fingerprint.provider,
-        requested_family = %fingerprint.requested_family,
-        response_model = %fingerprint.response_model,
-        api_version = ?fingerprint.api_version,
-        capability_tier = fingerprint.capability_tier,
-        "model fingerprint (AGENTS.md §4.4 invariant #1)"
+        provider = metadata.fingerprint.provider,
+        requested_family = %metadata.fingerprint.requested_family,
+        response_model = %metadata.fingerprint.response_model,
+        response_model_missing = metadata.fingerprint.response_model_missing,
+        api_version = ?metadata.fingerprint.api_version,
+        capability_tier = metadata.fingerprint.capability_tier,
+        usage = ?metadata.usage,
+        usage_source = if metadata.usage.is_some() { "reported" } else { "unknown" },
+        finish_reason = ?metadata.finish_reason,
+        content_filter = ?metadata.content_filter,
+        latency_ms = metadata.latency.as_millis(),
+        prompt_id = PROMPT_ID,
+        prompt_version = PROMPT_VERSION,
+        "model call metadata"
     );
 
     println!("--- parsed MeetingMinutes ---");
     println!("{}", serde_json::to_string_pretty(&parsed)?);
     println!("--- fingerprint ---");
-    println!("provider         = {}", fingerprint.provider);
-    println!("requested_family = {}", fingerprint.requested_family);
-    println!("response_model   = {}", fingerprint.response_model);
-    println!("api_version      = {:?}", fingerprint.api_version);
-    println!("capability_tier  = {}", fingerprint.capability_tier);
+    println!("provider         = {}", metadata.fingerprint.provider);
+    println!(
+        "requested_family = {}",
+        metadata.fingerprint.requested_family
+    );
+    println!("response_model   = {}", metadata.fingerprint.response_model);
+    println!(
+        "model_id_missing  = {}",
+        metadata.fingerprint.response_model_missing
+    );
+    println!("api_version      = {:?}", metadata.fingerprint.api_version);
+    println!(
+        "capability_tier  = {}",
+        metadata.fingerprint.capability_tier
+    );
+    println!("usage            = {:?}", metadata.usage);
+    println!("finish_reason    = {:?}", metadata.finish_reason);
+    println!("content_filter   = {:?}", metadata.content_filter);
+    println!("latency_ms       = {}", metadata.latency.as_millis());
 
     Ok(())
 }
 
-fn build_request(family: &str) -> CompletionRequest {
-    CompletionRequest {
+fn build_request(family: &str) -> Result<CompletionRequest, structured_output::ContextBuildError> {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let context = ContextBuilder::new("structured-output-teaching", now, 4096)
+        .add(ContextItem::new(
+            ContextRole::System,
+            SYSTEM_PROMPT,
+            "repo://structured-output/prompt/system",
+            format!("{PROMPT_ID}@{PROMPT_VERSION}"),
+            TrustLevel::TrustedInstruction,
+            "structured-output-teaching",
+            AccessDecision::allowed("project-local-static-instruction"),
+            now,
+            PROMPT_VERSION,
+            None,
+            "required output contract",
+        ))
+        .add(ContextItem::new(
+            ContextRole::User,
+            format!("Meeting transcript:\n{MEETING_INPUT}"),
+            "repo://structured-output/fixtures/meeting_input.txt",
+            "fixtures/meeting_input.txt",
+            TrustLevel::UntrustedData,
+            "structured-output-teaching",
+            AccessDecision::allowed("public-synthetic-fixture"),
+            now,
+            "fixture-v1",
+            None,
+            "single task input",
+        ))
+        .build()?;
+    Ok(CompletionRequest {
         model_family: family.to_string(),
-        system: Some(SYSTEM_PROMPT.into()),
-        user: format!("Meeting transcript:\n{MEETING_INPUT}"),
+        context,
         temperature: Some(0.0),
         max_tokens: Some(1024),
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sha2::{Digest, Sha256};
+    use structured_output::PROMPT_SHA256;
+
+    #[test]
+    fn prompt_contract_is_versioned_and_user_data_stays_untrusted() {
+        assert_eq!(PROMPT_ID, "structured-output.system");
+        assert_eq!(PROMPT_VERSION, "1");
+        assert_eq!(
+            format!("{:x}", Sha256::digest(SYSTEM_PROMPT)),
+            PROMPT_SHA256
+        );
+        let request = build_request("gemini-3.5-flash").unwrap();
+        assert_eq!(request.context.items().len(), 2);
+        assert_eq!(
+            request.context.items()[0].trust_level(),
+            TrustLevel::TrustedInstruction
+        );
+        assert_eq!(
+            request.context.items()[1].trust_level(),
+            TrustLevel::UntrustedData
+        );
+        assert!(request.context.user().starts_with("Meeting transcript:\n"));
+        assert!(!request.context.system().contains(MEETING_INPUT));
+    }
+
+    #[test]
+    fn real_mode_requires_explicit_opt_in_and_bound_configuration() {
+        assert!(matches!(
+            resolve_mode_values(None, Some("key".into()), false, None, None).unwrap(),
+            Mode::Mock {
+                reason: MockReason::SafeDefault
+            }
+        ));
+        assert!(resolve_mode_values(Some("real"), Some("key".into()), true, None, None).is_err());
+        assert!(
+            resolve_mode_values(
+                Some("real"),
+                Some("key".into()),
+                false,
+                Some("unknown-model".into()),
+                None,
+            )
+            .is_err()
+        );
+        for timeout in ["not-a-number", "0", "121"] {
+            assert!(
+                resolve_mode_values(Some("real"), Some("key".into()), false, None, Some(timeout),)
+                    .is_err()
+            );
+        }
     }
 }
-
-const SYSTEM_PROMPT: &str = "\
-You extract structured meeting minutes from a free-form transcript.
-
-Return ONLY a single JSON object (no prose, no Markdown fence) with this shape:
-{
-  \"title\": string,
-  \"date\": \"YYYY-MM-DD\",
-  \"attendees\": [string, ...],
-  \"decisions\": [string, ...],
-  \"action_items\": [
-    { \"owner\": string, \"task\": string, \"due_date\": \"YYYY-MM-DD\" | null }
-  ]
-}
-Do not add fields. If a due date is unknown, use null.
-";

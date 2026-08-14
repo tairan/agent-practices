@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "contract_version": 4,
+  "manifest_version": "v4-10-cases",
+  "cases": [
+    {
+      "name": "ok",
+      "path": "fixtures/mock_responses/ok.json",
+      "expected": "success",
+      "illegal": false,
+      "baseline_accepts": true,
+      "sha256": "934164fe6a3a74ba156fc743f62e69d32f8649b864327844796edbb5f28fafea"
+    },
+    {
+      "name": "fenced",
+      "path": "fixtures/mock_responses/fenced.txt",
+      "expected": "success",
+      "illegal": false,
+      "baseline_accepts": false,
+      "sha256": "12919e49125f9a45c37c2fac39ad686a17689de2f96f48cbe43412329460b588"
+    },
+    {
+      "name": "chatty",
+      "path": "fixtures/mock_responses/chatty.txt",
+      "expected": "success",
+      "illegal": false,
+      "baseline_accepts": false,
+      "sha256": "afd944817ddba1cec6bd1c511312fb8b52c0d703b54e878397fcec2b77ada209"
+    },
+    {
+      "name": "empty",
+      "path": "fixtures/mock_responses/empty.txt",
+      "expected": "empty",
+      "illegal": true,
+      "baseline_accepts": false,
+      "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+    },
+    {
+      "name": "truncated",
+      "path": "fixtures/mock_responses/truncated.txt",
+      "expected": "extraction",
+      "illegal": true,
+      "baseline_accepts": false,
+      "sha256": "b28d47d70b7d93f84e9c2090003ed0b1fe8e3809baba71fd754b63da0440c015"
+    },
+    {
+      "name": "multi_json",
+      "path": "fixtures/mock_responses/multi_json.txt",
+      "expected": "ambiguous",
+      "illegal": true,
+      "baseline_accepts": false,
+      "sha256": "6414d6d4a14a8ec5fe6c17c3e4f917f009b900221276fdbafbcfda3f88277447"
+    },
+    {
+      "name": "missing_field",
+      "path": "fixtures/mock_responses/missing_field.json",
+      "expected": "schema",
+      "illegal": true,
+      "baseline_accepts": false,
+      "sha256": "d6be1c46f270062f8c805da4e5365f71a56dd3002bafa80dd3374726c28367d9"
+    },
+    {
+      "name": "type_mismatch",
+      "path": "fixtures/mock_responses/type_mismatch.json",
+      "expected": "schema",
+      "illegal": true,
+      "baseline_accepts": false,
+      "sha256": "ccd616164c4327dd5e2317eb3c090e928f74d32f985d729345672e3d8ab55d4a"
+    },
+    {
+      "name": "missing_due_date",
+      "path": "fixtures/mock_responses/missing_due_date.json",
+      "expected": "schema",
+      "illegal": true,
+      "baseline_accepts": true,
+      "sha256": "35bfaf70716e0ff79cca923a30f49cb7413b98ccf20974add0f3f6bddc70b939"
+    },
+    {
+      "name": "extra_field",
+      "path": "fixtures/mock_responses/extra_field.json",
+      "expected": "schema",
+      "illegal": true,
+      "baseline_accepts": true,
+      "sha256": "83f8ff38928fec3079bc68f1519863e543d766b4b95e964dcd4bc01ceac63838"
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+schema-version = 1
+id = "example-concept"
+title = "Example Concept"
+stage = "foundation"
+profiles = ["base", "model"]
+competencies = ["model", "evaluation"]
+
+[scope]
+solves = "TODO: 用一句话描述本项目验证的独立机制"
+does-not-solve = "TODO: 明确相邻但不属于本项目的问题"
+
+[acceptance]
+spec = "acceptance.toml"
+

@@ -1,0 +1,77 @@
+schema-version = 1
+contract-version = 4
+
+[dataset]
+path = "fixtures/mock_responses"
+manifest = "fixtures/evaluation_manifest.json"
+manifest-version = "v4-10-cases"
+manifest-sha256 = "2e03d4cc6c1d28e5575c4a7b99297f9584632624ae1ada5fbbde12986e7fd20b"
+distinct-cases = 10
+invalid-cases = 7
+
+[prompt]
+id = "structured-output.system"
+version = "1"
+sha256 = "7a6666b16fe63e45596ded24ee341b774773552f867dea96a92a1746a3adda6b"
+
+[baseline]
+name = "direct-serde-json"
+description = "直接对模型文本执行 serde_json 反序列化，不剥离围栏、客套文本或执行 JSON Schema 校验"
+command = "baseline-evaluation"
+dataset = "fixtures/mock_responses"
+scorer = "expected-success-or-rejection-v3"
+artifact = "process:exit-code"
+sample-size = 10
+expected-task-outcome-pass-rate = 0.60
+comparison = "target task_outcome_pass_rate must exceed baseline"
+
+[[metric]]
+name = "task_outcome_pass_rate"
+direction = "higher"
+threshold = 1.00
+sample-size = 10
+dataset = "fixtures/mock_responses"
+scorer = "expected-success-or-rejection-v3"
+command = "offline-evaluation"
+artifact = "evidence/evaluation.json"
+
+[[metric]]
+name = "invalid_or_ambiguous_acceptance_rate"
+direction = "lower"
+threshold = 0.00
+sample-size = 7
+dataset = "fixtures/mock_responses"
+scorer = "reject-invalid-or-ambiguous-v3"
+command = "offline-evaluation"
+artifact = "evidence/evaluation.json"
+
+[[metric]]
+name = "p95_pipeline_latency_ms"
+direction = "lower"
+threshold = 10.0
+sample-size = 1000
+dataset = "fixtures/mock_responses"
+scorer = "full-pipeline-steady-clock-v1"
+command = "offline-evaluation"
+artifact = "evidence/evaluation.json"
+
+[budgets]
+p95-latency-ms = 10
+max-estimated-cost-usd = 0.00
+measurement-command = "offline-evaluation"
+artifact = "evidence/evaluation.json"
+
+[[command]]
+name = "baseline-evaluation"
+run = "cargo test --locked --test baseline"
+required = true
+
+[[command]]
+name = "offline-evaluation"
+run = "cargo run --locked --bin evaluate -- --output evidence/evaluation.json"
+required = true
+
+[[command]]
+name = "offline-tests"
+run = "cargo test --locked"
+required = true

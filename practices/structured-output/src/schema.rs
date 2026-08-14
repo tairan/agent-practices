@@ -1,6 +1,6 @@
 //! JSON Schema (Draft 2020-12) validation, then typed deserialize.
 //!
-//! Two-stage by design (see AGENTS.md §8 "explicit types for model output"):
+//! Two-stage by design, following the explicit model-output type contract:
 //!
 //! 1. Validate the JSON value against the schema — collect *all* issues, not
 //!    just the first, so callers get actionable feedback in one pass.
@@ -39,10 +39,22 @@ impl SchemaValidator {
         let issues: Vec<SchemaIssue> = self
             .inner
             .iter_errors(&value)
-            .map(|e| SchemaIssue {
-                instance_path: e.instance_path().to_string(),
-                schema_path: e.schema_path().to_string(),
-                message: e.to_string(),
+            .map(|error| {
+                let instance_path = error.instance_path().to_string();
+                let schema_path = error.schema_path().to_string();
+                let code = schema_path
+                    .rsplit('/')
+                    .find(|segment| !segment.is_empty())
+                    .unwrap_or("validation")
+                    .to_string();
+                SchemaIssue {
+                    instance_depth: instance_path
+                        .split('/')
+                        .filter(|segment| !segment.is_empty())
+                        .count(),
+                    schema_path,
+                    code,
+                }
             })
             .collect();
 
@@ -50,7 +62,8 @@ impl SchemaValidator {
             return Err(StructuredOutputError::SchemaValidationFailed { issues });
         }
 
-        serde_json::from_value::<T>(value).map_err(StructuredOutputError::TypedDeserializeFailed)
+        serde_json::from_value::<T>(value)
+            .map_err(|_| StructuredOutputError::TypedDeserializeFailed)
     }
 }
 
@@ -117,8 +130,8 @@ mod tests {
         match err {
             StructuredOutputError::SchemaValidationFailed { issues } => {
                 assert!(
-                    issues.iter().any(|i| i.message.contains("action_items")),
-                    "expected an action_items issue, got: {issues:?}"
+                    issues.iter().any(|i| i.code == "required"),
+                    "expected a required-field issue, got: {issues:?}"
                 );
             }
             other => panic!("expected SchemaValidationFailed, got {other:?}"),
@@ -142,6 +155,27 @@ mod tests {
             err,
             StructuredOutputError::SchemaValidationFailed { .. }
         ));
+    }
+
+    #[test]
+    fn validation_issues_never_retain_model_values() {
+        let canary = "SECRET_MODEL_VALUE_CANARY_9f31";
+        for schema in [
+            json!({"type":"object","properties":{"value":{"type":"integer"}},"required":["value"]}),
+            json!({"type":"object","properties":{"value":{"type":"string","pattern":"^allowed$"}},"required":["value"]}),
+            json!({"type":"object","properties":{"value":{"enum":["allowed"]}},"required":["value"]}),
+        ] {
+            let validator = SchemaValidator::compile(&schema).unwrap();
+            let error = validator
+                .validate_and_deserialize::<Value>(json!({"value": canary}))
+                .unwrap_err();
+            let StructuredOutputError::SchemaValidationFailed { issues } = &error else {
+                panic!("expected schema validation failure");
+            };
+            assert!(!error.to_string().contains(canary));
+            assert!(!format!("{error:?}").contains(canary));
+            assert!(!serde_json::to_string(issues).unwrap().contains(canary));
+        }
     }
 
     #[test]
@@ -184,7 +218,7 @@ mod tests {
                 assert!(
                     issues
                         .iter()
-                        .any(|i| i.instance_path.contains("/action_items/0"))
+                        .any(|i| i.instance_depth == 2 && i.code == "required")
                 );
             }
             other => panic!("expected SchemaValidationFailed, got {other:?}"),
@@ -233,5 +267,27 @@ mod tests {
             }
             other => panic!("expected SchemaValidationFailed, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn schema_and_rust_type_mismatch_is_classified() {
+        #[derive(Debug, Deserialize)]
+        #[allow(dead_code)]
+        struct WrongRustType {
+            field_not_in_schema: String,
+        }
+
+        let v = validator();
+        let payload = json!({
+            "title": "M",
+            "date": "2026-06-24",
+            "attendees": ["a"],
+            "decisions": [],
+            "action_items": []
+        });
+        assert!(matches!(
+            v.validate_and_deserialize::<WrongRustType>(payload),
+            Err(StructuredOutputError::TypedDeserializeFailed)
+        ));
     }
 }
